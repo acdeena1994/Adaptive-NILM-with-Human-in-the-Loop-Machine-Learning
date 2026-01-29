@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HexTech Smart Monitoring</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --secondary: #3f37c9;
+            --success: #4cc9f0;
+            --danger: #f72585;
+            --warning: #f77f00;
+            --dark: #2b2d42;
+            --light: #f8f9fa;
+            --gray: #6c757d;
+            --info: #17a2b8;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: var(--dark);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            color: var(--dark);
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            position: relative;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .header-title {
+            font-size: 2.5em;
+            font-weight: 700;
+            background: linear-gradient(45deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+        
+        .connection-indicator {
+            position: absolute;
+            top: 25px;
+            right: 25px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .connection-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .connection-dot.connected {
+            background-color: var(--success);
+            box-shadow: 0 0 20px var(--success);
+        }
+        
+        .connection-dot.disconnected {
+            background-color: var(--danger);
+            box-shadow: 0 0 20px var(--danger);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .status-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .status-value {
+            font-size: 1.5em;
+            font-weight: 600;
+            color: var(--primary);
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin-bottom: 25px;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid rgba(67, 97, 238, 0.1);
+            padding-bottom: 15px;
+        }
+        
+        .card-title {
+            font-size: 1.4em;
+            font-weight: 700;
+            background: linear-gradient(45deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .reading {
+            font-size: 2.5em;
+            font-weight: 800;
+            margin: 15px 0;
+            background: linear-gradient(45deg, var(--primary), var(--success));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .unit {
+            font-size: 0.6em;
+            color: var(--gray);
+            font-weight: 400;
+        }
+        
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .metric-item {
+            background: linear-gradient(135deg, rgba(67, 97, 238, 0.1), rgba(76, 201, 240, 0.1));
+            padding: 12px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .metric-label {
+            font-size: 0.85em;
+            color: var(--gray);
+            margin-bottom: 5px;
+        }
+        
+        .metric-value {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: var(--primary);
+        }
+        
+        .chart-container {
+            height: 350px;
+            margin-top: 15px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 15px;
+            padding: 15px;
+        }
+        
+        .appliances-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        
+        .appliance-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.7));
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 6px 25px rgba(0, 0, 0, 0.1);
+            border-left: 5px solid var(--primary);
+            transition: all 0.3s ease;
+        }
+        
+        .appliance-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        }
+        
+        .appliance-name {
+            font-weight: 700;
+            font-size: 1.1em;
+            margin-bottom: 8px;
+            color: var(--dark);
+        }
+        
+        .appliance-power {
+            font-size: 1.8em;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 5px;
+        }
+        
+        .appliance-meta {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .appliance-status {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-top: 10px;
+            width: fit-content;
+        }
+        
+        .status-on {
+            background: linear-gradient(135deg, rgba(76, 201, 240, 0.2), rgba(76, 201, 240, 0.3));
+            color: #2980b9;
+            border: 1px solid rgba(76, 201, 240, 0.3);
+        }
+        
+        .status-off {
+            background: rgba(108, 117, 125, 0.15);
+            color: var(--gray);
+            border: 1px solid rgba(108, 117, 125, 0.2);
+        }
+        
+        .confidence-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--danger), var(--warning), var(--success));
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+        
+        .event-card {
+            background: linear-gradient(135deg, rgba(247, 127, 0, 0.1), rgba(247, 127, 0, 0.05));
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 15px rgba(247, 127, 0, 0.1);
+            border-left: 5px solid var(--warning);
+            transition: all 0.3s ease;
+        }
+        
+        .event-card:hover {
+            transform: translateX(5px);
+            box-shadow: 0 6px 25px rgba(247, 127, 0, 0.2);
+        }
+        
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .event-power {
+            font-size: 1.6em;
+            font-weight: 700;
+            color: var(--warning);
+        }
+        
+        .event-confidence {
+            background: rgba(255, 255, 255, 0.7);
+            padding: 4px 8px;
+            border-radius: 10px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+        
+        .event-details {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .event-detail {
+            font-size: 0.9em;
+            color: var(--dark);
+        }
+        
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 25px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(67, 97, 238, 0.3);
+        }
+        
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(67, 97, 238, 0.4);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, var(--success), #3498db);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, var(--danger), #e74c3c);
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, var(--warning), #e67e22);
+        }
+        
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .identification-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 25px;
+            margin-top: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        .label-form {
+            background: linear-gradient(135deg, rgba(76, 201, 240, 0.1), rgba(67, 97, 238, 0.05));
+            padding: 20px;
+            border-radius: 15px;
+            margin-top: 15px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: var(--dark);
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 10px 15px;
+            border: 2px solid rgba(67, 97, 238, 0.2);
+            border-radius: 10px;
+            font-size: 1em;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 10px rgba(67, 97, 238, 0.2);
+        }
+        
+        .success-message {
+            background: linear-gradient(135deg, rgba(76, 201, 240, 0.2), rgba(76, 201, 240, 0.1));
+            color: #2980b9;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            border-left: 4px solid var(--success);
+        }
+        
+        .no-events {
+            text-align: center;
+            color: var(--gray);
+            font-style: italic;
+            padding: 30px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, rgba(67, 97, 238, 0.1), rgba(76, 201, 240, 0.05));
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 2em;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 0.9em;
+            color: var(--gray);
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.9em;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+            
+            .appliances-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls {
+                flex-direction: column;
+            }
+            
+            .header-title {
+                font-size: 2em;
+            }
+            
+            .connection-indicator {
+                position: relative;
+                top: auto;
+                right: auto;
+                margin-top: 15px;
+                justify-content: center;
+            }
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(67, 97, 238, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 10px;
+            color: white;
+            font-weight: 600;
+            z-index: 1000;
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+        }
+        
+        .notification.show {
+            transform: translateX(0);
+        }
+        
+        .notification.success {
+            background: linear-gradient(135deg, var(--success), #3498db);
+        }
+        
+        .notification.error {
+            background: linear-gradient(135deg, var(--danger), #e74c3c);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-title">HexTech Smart Energy Monitor</div>
+            <p>Enhanced Appliance Detection & Energy Analytics</p>
+            
+            <div class="connection-indicator">
+                <div class="connection-dot connected" id="connectionDot"></div>
+                <span id="connectionStatus">Connecting...</span>
+            </div>
+            
+            <div class="status-grid">
+                <div class="status-item">
+                    <div class="status-value" id="totalEvents">0</div>
+                    <div>Events Detected</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="identificationRate">0%</div>
+                    <div>ID Success Rate</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="lastUpdateTime">-</div>
+                    <div>Last Update</div>
+                </div>
+            </div>
+        </header>
+        
+        <div class="dashboard">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Real-Time Power</div>
+                </div>
+                <div class="reading" id="power">0<span class="unit">W</span></div>
+                
+                <div class="metric-grid">
+                    <div class="metric-item">
+                        <div class="metric-label">Voltage</div>
+                        <div class="metric-value" id="voltage">0V</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Current</div>
+                        <div class="metric-value" id="current">0A</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Energy Today</div>
+                        <div class="metric-value" id="todayEnergy">0kWh</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Estimated Cost</div>
+                        <div class="metric-value">₹<span id="costValue">0.00</span></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Power Quality</div>
+                </div>
+                <div class="metric-grid">
+                    <div class="metric-item">
+                        <div class="metric-label">Frequency</div>
+                        <div class="metric-value" id="frequency">0Hz</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">Power Factor</div>
+                        <div class="metric-value" id="powerFactor">0</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card full-width">
+                <div class="card-header">
+                    <div class="card-title">Power Consumption Timeline</div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="powerChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card full-width">
+                <div class="card-header">
+                    <div class="card-title">Identified Appliances</div>
+                </div>
+                <div class="appliances-grid" id="appliancesList">
+                    <div class="no-events">
+                        <div class="loading-spinner"></div>
+                        <p>Scanning for appliance activity...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="identification-panel">
+            <div class="card-header">
+                <div class="card-title">Smart Appliance Identification</div>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalEventsCount">0</div>
+                    <div class="stat-label">Total Events</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="identifiedCount">0</div>
+                    <div class="stat-label">Identified</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="unidentifiedCount">0</div>
+                    <div class="stat-label">Need Labeling</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="confidenceScore">0%</div>
+                    <div class="stat-label">Avg Confidence</div>
+                </div>
+            </div>
+            
+            <div id="unlabeledEventsSection" style="margin-top: 25px;">
+                <h3>Unidentified Power Events - Help Train the AI</h3>
+                <p style="margin-bottom: 20px; color: var(--gray);">
+                    These power changes couldn't be automatically identified. Label them to improve detection accuracy.
+                </p>
+                <div id="eventsList">
+                    <div class="no-events">No unidentified events at this time.</div>
+                </div>
+            </div>
+            
+            <div id="labelForm" class="label-form hidden">
+                <h3>Label This Appliance</h3>
+                <p style="margin-bottom: 15px;">Help improve our AI by identifying this power event:</p>
+                
+                <div id="eventDetails" style="margin-bottom: 15px;"></div>
+                
+                <div class="form-group">
+                    <label for="applianceName">Appliance Name:</label>
+                    <input type="text" id="applianceName" placeholder="e.g., Microwave, TV, Coffee Maker">
+                </div>
+                
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button onclick="submitLabel()">Submit & Train AI</button>
+                    <button onclick="cancelLabel()" class="btn-danger">Cancel</button>
+                </div>
+            </div>
+            
+            <div id="labelSuccess" class="success-message hidden">
+                <p><strong>Success!</strong> Your label has been recorded and the AI has been updated. Thank you for improving the system!</p>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn-success" onclick="exportData()">📊 Export Data</button>
+            <button class="btn-danger" onclick="clearData()">🗑️ Clear History</button>
+            <button class="btn-warning" onclick="updateCostRate()">💰 Update Rate</button>
+            <button onclick="checkConnection()">🔍 Check Status</button>
+            <button onclick="reconnectWebSocket()">🔄 Reconnect</button>
+            <button onclick="requestSystemStats()">📈 Refresh Stats</button>
+        </div>
+        
+        <footer>
+            <p>Enhanced Appliance Detection</p>
+            <p>Last Updated: <span id="footerTimestamp">-</span> IST</p>
+        </footer>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script>
+        // Enhanced Configuration
+        const CONFIG = {
+            chartDataLimit: 60,
+            updateInterval: 2000,
+            costRate: 6.50,
+            timeZone: 'Asia/Kolkata',
+            apiKey: 'nilm-system-api-key-2023',
+            socketReconnectInterval: 3000,
+            dataTimeout: 10000,
+            maxRetries: 3,
+            retryDelay: 5000
+        };
+        
+        // Enhanced variables
+        let powerData = [];
+        let voltageData = [];
+        let currentData = [];
+        let timestamps = [];
+        let chart;
+        let systemStats = {};
+        let appliances = [];
+        let unlabeledEvents = [];
+        let currentEventForLabeling = null;
+        let totalEnergy = 0;
+        let todayEnergy = 0;
+        let lastEnergyUpdate = new Date();
+        let startTime = new Date();
+        let retryCount = 0;
+        
+        // Socket connection management
+        let socket = null;
+        
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = `notification ${type}`;
+            notification.classList.add('show');
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 4000);
+        }
+        
+        function initSocket() {
+            if (socket) {
+                socket.disconnect();
+            }
+            
+            socket = io({
+                reconnection: true,
+                reconnectionAttempts: CONFIG.maxRetries,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 10000,
+                timeout: 20000
+            });
+            
+            socket.on('connect', () => {
+                console.log('Connected to enhanced server');
+                document.getElementById('connectionStatus').textContent = 'Connected';
+                document.getElementById('connectionDot').className = 'connection-dot connected';
+                retryCount = 0;
+                
+                // Request initial data
+                socket.emit('request_initial_data');
+                socket.emit('request_system_status');
+                
+                showNotification('Connected to NILM server', 'success');
+            });
+            
+            socket.on('disconnect', (reason) => {
+                console.log('Disconnected:', reason);
+                document.getElementById('connectionStatus').textContent = `Disconnected: ${reason}`;
+                document.getElementById('connectionDot').className = 'connection-dot disconnected';
+                
+                if (retryCount < CONFIG.maxRetries) {
+                    retryCount++;
+                    setTimeout(() => {
+                        console.log(`Retry attempt ${retryCount}`);
+                        initSocket();
+                    }, CONFIG.retryDelay * retryCount);
+                }
+            });
+            
+            socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+                showNotification(`Connection error: ${error.message}`, 'error');
+            });
+            
+            socket.on('data_update', (data) => {
+                updateDashboard(data);
+            });
+            
+            socket.on('appliance_update', (appliance) => {
+                updateSingleAppliance(appliance);
+                displayAppliances();
+            });
+            
+            socket.on('appliance_list', (applianceList) => {
+                appliances = applianceList;
+                displayAppliances();
+            });
+            
+            socket.on('unidentified_event', (event) => {
+                unlabeledEvents.unshift(event);
+                displayUnlabeledEvents();
+                showNotification('New unidentified power event detected!', 'error');
+            });
+            
+            socket.on('initial_data', (data) => {
+                appliances = data.appliances || [];
+                unlabeledEvents = data.unlabeled_events || [];
+                systemStats = data.system_stats || {};
+                
+                displayAppliances();
+                displayUnlabeledEvents();
+                updateSystemStats();
+                
+                showNotification('Initial data loaded successfully', 'success');
+            });
+            
+            socket.on('system_stats', (stats) => {
+                systemStats = stats;
+                updateSystemStats();
+            });
+        }
+        
+        function initChart() {
+            const ctx = document.getElementById('powerChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: timestamps,
+                    datasets: [
+                        {
+                            label: 'Power (W)',
+                            data: powerData,
+                            borderColor: 'rgba(67, 97, 238, 1)',
+                            backgroundColor: 'rgba(67, 97, 238, 0.1)',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 2,
+                            pointHoverRadius: 6
+                        },
+                        {
+                            label: 'Voltage (V)',
+                            data: voltageData,
+                            borderColor: 'rgba(76, 201, 240, 1)',
+                            backgroundColor: 'rgba(76, 201, 240, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.4,
+                            yAxisID: 'y1',
+                            pointRadius: 1,
+                            pointHoverRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 750,
+                        easing: 'easeOutQuart'
+                    },
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: 'white',
+                            bodyColor: 'white',
+                            borderColor: 'rgba(67, 97, 238, 1)',
+                            borderWidth: 1
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Power (W)',
+                                color: 'rgba(67, 97, 238, 1)'
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        },
+                        y1: {
+                            position: 'right',
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Voltage (V)',
+                                color: 'rgba(76, 201, 240, 1)'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time (IST)'
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function formatISTTimestamp(timestamp) {
+            const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+            return date.toLocaleString('en-IN', { 
+                timeZone: CONFIG.timeZone,
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+        
+        function updateDashboard(data) {
+            // Update main readings
+            document.getElementById('power').innerHTML = `${(data.power || 0).toFixed(1)}<span class="unit">W</span>`;
+            document.getElementById('voltage').textContent = `${(data.voltage || 0).toFixed(1)}V`;
+            document.getElementById('current').textContent = `${(data.current || 0).toFixed(3)}A`;
+            document.getElementById('frequency').textContent = `${(data.frequency || 0).toFixed(1)}Hz`;
+            document.getElementById('powerFactor').textContent = (data.powerFactor || 0).toFixed(2);
+            
+            // Update system info
+            document.getElementById('wifiStrength').textContent = `${data.rssi || 0}dBm`;
+            document.getElementById('memoryUsage').textContent = `${((data.heap || 0) / 1024).toFixed(1)}KB`;
+            
+            // Calculate energy and cost
+            calculateEnergyCost(data.power || 0);
+            
+            // Update charts
+            const now = new Date();
+            const timeString = formatISTTimestamp(now);
+            
+            powerData.push(data.power || 0);
+            voltageData.push(data.voltage || 0);
+            currentData.push(data.current || 0);
+            timestamps.push(timeString);
+            
+            // Limit data points for performance
+            if (powerData.length > CONFIG.chartDataLimit) {
+                powerData.shift();
+                voltageData.shift();
+                currentData.shift();
+                timestamps.shift();
+            }
+            
+            chart.update('active');
+            
+            // Update system uptime
+            updateSystemUptime();
+            
+            // Update last update time
+            document.getElementById('lastUpdateTime').textContent = formatISTTimestamp(now);
+            document.getElementById('footerTimestamp').textContent = formatISTTimestamp(now);
+        }
+        
+        function calculateEnergyCost(currentPower) {
+            const now = new Date();
+            const timeDiff = (now - lastEnergyUpdate) / 1000 / 3600; // hours
+            
+            const energyConsumed = (currentPower * timeDiff) / 1000; // kWh
+            totalEnergy += energyConsumed;
+            todayEnergy += energyConsumed;
+            
+            const cost = totalEnergy * CONFIG.costRate;
+            
+            document.getElementById('costValue').textContent = cost.toFixed(2);
+            document.getElementById('todayEnergy').textContent = todayEnergy.toFixed(3);
+            
+            lastEnergyUpdate = now;
+        }
+        
+        function updateSystemUptime() {
+            const now = new Date();
+            const uptime = Math.floor((now - startTime) / 1000);
+            const hours = Math.floor(uptime / 3600);
+            const minutes = Math.floor((uptime % 3600) / 60);
+            const seconds = uptime % 60;
+            
+            document.getElementById('systemUptime').textContent = 
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+        
+        function updateSingleAppliance(appliance) {
+            const index = appliances.findIndex(a => a.appliance_name === appliance.appliance_name);
+            if (index >= 0) {
+                appliances[index] = appliance;
+            } else {
+                appliances.push(appliance);
+            }
+            showNotification(`${appliance.appliance_name} detected: ${appliance.state}`, 'success');
+        }
+        
+        function displayAppliances() {
+            const container = document.getElementById('appliancesList');
+            
+            if (!appliances || appliances.length === 0) {
+                container.innerHTML = `
+                    <div class="no-events">
+                        <div class="loading-spinner"></div>
+                        <p>Scanning for appliance activity...</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            appliances.forEach(appliance => {
+                const card = document.createElement('div');
+                card.className = 'appliance-card';
+                
+                const energy = (appliance.power_consumption * 1) / 1000;
+                const cost = energy * CONFIG.costRate;
+                const confidence = (appliance.confidence || 0) * 100;
+                
+                card.innerHTML = `
+                    <div class="appliance-name">${appliance.appliance_name}</div>
+                    <div class="appliance-power">${appliance.power_consumption.toFixed(1)} <span class="unit">W</span></div>
+                    
+                    <div class="appliance-meta">
+                        <div>
+                            <div style="font-size: 0.9em; color: var(--gray);">Estimated Cost</div>
+                            <div style="font-weight: 600;">₹${cost.toFixed(2)}/hr</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.9em; color: var(--gray);">Confidence</div>
+                            <div style="font-weight: 600;">${confidence.toFixed(0)}%</div>
+                        </div>
+                    </div>
+                    
+                    <div class="appliance-status ${appliance.state === 'on' ? 'status-on' : 'status-off'}">
+                        ${appliance.state.toUpperCase()}
+                    </div>
+                    
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" style="width: ${confidence}%"></div>
+                    </div>
+                    
+                    <div style="font-size: 0.85em; margin-top: 10px; color: var(--gray);">
+                        Detected: ${formatISTTimestamp(appliance.timestamp)}
+                    </div>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+        
+        function displayUnlabeledEvents() {
+            const container = document.getElementById('eventsList');
+            
+            if (!unlabeledEvents || unlabeledEvents.length === 0) {
+                container.innerHTML = '<div class="no-events">No unidentified events at this time.</div>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            unlabeledEvents.slice(0, 10).forEach(event => {
+                const card = document.createElement('div');
+                card.className = 'event-card';
+                
+                const energy = (Math.abs(event.power_change) * 1) / 1000;
+                const cost = energy * CONFIG.costRate;
+                const confidence = (event.confidence || 0) * 100;
+                
+                card.innerHTML = `
+                    <div class="event-header">
+                        <div class="event-power">${event.power_change > 0 ? '+' : ''}${event.power_change.toFixed(1)} <span class="unit">W</span></div>
+                        <div class="event-confidence">Confidence: ${confidence.toFixed(0)}%</div>
+                    </div>
+                    
+                    <div class="event-details">
+                        <div class="event-detail">
+                            <strong>Power Before:</strong> ${(event.power_before || 0).toFixed(1)}W
+                        </div>
+                        <div class="event-detail">
+                            <strong>Power After:</strong> ${(event.power_after || 0).toFixed(1)}W
+                        </div>
+                        <div class="event-detail">
+                            <strong>Est. Cost:</strong> ₹${cost.toFixed(2)}/hr
+                        </div>
+                        <div class="event-detail">
+                            <strong>Time:</strong> ${formatISTTimestamp(event.timestamp)}
+                        </div>
+                    </div>
+                    
+                    <button onclick="startLabeling(${event.id}, ${event.power_change}, '${event.timestamp}')" 
+                            style="margin-top: 15px; width: 100%;">
+                        🏷️ Identify This Appliance
+                    </button>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+        
+        function updateSystemStats() {
+            if (!systemStats) return;
+            
+            document.getElementById('totalEvents').textContent = systemStats.total_events || 0;
+            document.getElementById('identificationRate').textContent = `${(systemStats.identification_rate || 0).toFixed(1)}%`;
+            document.getElementById('totalEventsCount').textContent = systemStats.total_events || 0;
+            document.getElementById('identifiedCount').textContent = systemStats.identified_events || 0;
+            document.getElementById('unidentifiedCount').textContent = systemStats.unidentified_events || 0;
+            document.getElementById('confidenceScore').textContent = `${((systemStats.avg_confidence || 0) * 100).toFixed(0)}%`;
+        }
+        
+        function startLabeling(eventId, powerChange, timestamp) {
+            currentEventForLabeling = { id: eventId, power_change: powerChange, timestamp: timestamp };
+            
+            document.getElementById('eventDetails').innerHTML = `
+                <div style="background: rgba(67, 97, 238, 0.1); padding: 15px; border-radius: 10px;">
+                    <strong>Power Change:</strong> ${powerChange > 0 ? '+' : ''}${powerChange.toFixed(1)}W<br>
+                    <strong>Time:</strong> ${formatISTTimestamp(timestamp)}
+                </div>
+            `;
+            
+            document.getElementById('unlabeledEventsSection').classList.add('hidden');
+            document.getElementById('labelForm').classList.remove('hidden');
+        }
+        
+        function cancelLabel() {
+            document.getElementById('labelForm').classList.add('hidden');
+            document.getElementById('unlabeledEventsSection').classList.remove('hidden');
+            document.getElementById('applianceName').value = '';
+            currentEventForLabeling = null;
+        }
+        
+        async function submitLabel() {
+            const applianceName = document.getElementById('applianceName').value.trim();
+            
+            if (!applianceName) {
+                showNotification('Please enter an appliance name', 'error');
+                return;
+            }
+            
+            if (!currentEventForLabeling) {
+                showNotification('No event selected for labeling', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/label_appliance', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': CONFIG.apiKey
+                    },
+                    body: JSON.stringify({
+                        event_id: currentEventForLabeling.id,
+                        event_timestamp: currentEventForLabeling.timestamp,
+                        appliance_name: applianceName,
+                        power_change: currentEventForLabeling.power_change
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    document.getElementById('labelForm').classList.add('hidden');
+                    document.getElementById('labelSuccess').classList.remove('hidden');
+                    
+                    showNotification(`Successfully labeled as ${applianceName}!`, 'success');
+                    
+                    // Remove the labeled event from our list
+                    unlabeledEvents = unlabeledEvents.filter(e => e.id !== currentEventForLabeling.id);
+                    
+                    setTimeout(() => {
+                        document.getElementById('labelSuccess').classList.add('hidden');
+                        document.getElementById('unlabeledEventsSection').classList.remove('hidden');
+                        document.getElementById('applianceName').value = '';
+                        currentEventForLabeling = null;
+                        
+                        // Refresh data
+                        socket.emit('request_initial_data');
+                        requestSystemStats();
+                    }, 3000);
+                } else {
+                    throw new Error(data.message || 'Unknown error');
+                }
+                
+            } catch (error) {
+                console.error('Error submitting label:', error);
+                showNotification(`Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function updateCostRate() {
+            const newRate = prompt('Enter new electricity rate (₹ per kWh):', CONFIG.costRate);
+            if (newRate !== null && !isNaN(parseFloat(newRate)) && parseFloat(newRate) >= 0) {
+                CONFIG.costRate = parseFloat(newRate);
+                showNotification(`Rate updated to ₹${CONFIG.costRate.toFixed(2)} per kWh`, 'success');
+            }
+        }
+        
+        function exportData() {
+            const exportData = {
+                powerData: powerData,
+                voltageData: voltageData,
+                currentData: currentData,
+                timestamps: timestamps,
+                appliances: appliances,
+                unlabeledEvents: unlabeledEvents,
+                systemStats: systemStats,
+                totalEnergy: totalEnergy,
+                totalCost: totalEnergy * CONFIG.costRate,
+                costRate: CONFIG.costRate,
+                exportTime: new Date().toISOString()
+            };
+            
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", `nilm_enhanced_export_${new Date().toISOString().split('T')[0]}.json`);
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+            
+            showNotification('Data exported successfully!', 'success');
+        }
+        
+        function clearData() {
+            if (confirm('Clear all local data? This will reset charts and energy calculations but not affect the server database.')) {
+                powerData = [];
+                voltageData = [];
+                currentData = [];
+                timestamps = [];
+                totalEnergy = 0;
+                todayEnergy = 0;
+                appliances = [];
+                unlabeledEvents = [];
+                
+                chart.update();
+                displayAppliances();
+                displayUnlabeledEvents();
+                
+                document.getElementById('costValue').textContent = "0.00";
+                document.getElementById('todayEnergy').textContent = "0.000";
+                
+                showNotification('Local data cleared!', 'success');
+            }
+        }
+        
+        function checkConnection() {
+            const isConnected = socket && socket.connected;
+            const dataPoints = powerData.length;
+            const lastUpdate = timestamps[timestamps.length - 1] || 'None';
+            
+            alert(`Connection Status: ${isConnected ? 'Connected' : 'Disconnected'}\n` +
+                  `Data Points: ${dataPoints}\n` +
+                  `Last Update: ${lastUpdate}\n` +
+                  `Appliances Detected: ${appliances.length}\n` +
+                  `Pending Labels: ${unlabeledEvents.length}`);
+        }
+        
+        function reconnectWebSocket() {
+            showNotification('Attempting to reconnect...', 'success');
+            initSocket();
+        }
+        
+        async function requestSystemStats() {
+            try {
+                const response = await fetch('/api/statistics', {
+                    headers: {
+                        'X-API-Key': CONFIG.apiKey
+                    }
+                });
+                
+                if (response.ok) {
+                    const stats = await response.json();
+                    systemStats = stats;
+                    updateSystemStats();
+                    showNotification('System stats updated', 'success');
+                } else {
+                    throw new Error('Failed to fetch system stats');
+                }
+            } catch (error) {
+                console.error('Error fetching system stats:', error);
+                showNotification('Failed to update system stats', 'error');
+            }
+        }
+        
+        // Initialize the enhanced dashboard
+        function initDashboard() {
+            initChart();
+            initSocket();
+            
+            // Set initial timestamps
+            document.getElementById('footerTimestamp').textContent = formatISTTimestamp(new Date());
+            
+            // Start uptime counter
+            setInterval(updateSystemUptime, 1000);
+            
+            // Periodic data refresh
+            setInterval(() => {
+                if (socket && socket.connected) {
+                    socket.emit('request_initial_data');
+                }
+            }, 30000); // Every 30 seconds
+            
+            // Auto-refresh system stats
+            setInterval(requestSystemStats, 60000); // Every minute
+            
+            console.log('Enhanced NILM Dashboard initialized');
+        }
+        
+        // Initialize when page loads
+        window.onload = initDashboard;
+        
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && socket && socket.connected) {
+                socket.emit('request_initial_data');
+                requestSystemStats();
+            }
+        });
+        
+        // Handle browser close/refresh
+        window.addEventListener('beforeunload', () => {
+            if (socket) {
+                socket.disconnect();
+            }
+        });
+    </script>
+</body>
+</html>
